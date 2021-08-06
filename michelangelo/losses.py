@@ -1,5 +1,5 @@
 import tensorflow as tf
-import math
+import random
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -96,6 +96,23 @@ def lap_loss(logit, target, weight):
         loss_sum += (regression_loss(A[0], A[1], weight=A[2]) * (2**i))
 
     return loss_sum
+
+
+def get_unknown_tensor_from_pred(pred):
+
+    uncertain_area = tf.ones_like(pred, dtype=np.float32)
+    uncertain_area = tf.where(tf.math.less(pred, 1.0/255.0), 0.0, 1.0)
+    uncertain_area = tf.where(tf.math.greater(pred, 1-1.0/255.0), 0.0, uncertain_area)
+
+    ksize = tf.random.uniform([], minval=1, maxval=30, seed=random.randint(0, 1000), dtype=tf.int32)
+    kernel = tf.zeros([ksize, ksize, 1], dtype=tf.float32)
+    uncertain_area = tf.nn.dilation2d(uncertain_area, kernel, strides=[1,1,1,1], data_format='NHWC', dilations=[1,1,1,1], padding="SAME")
+
+    weight = tf.zeros_like(uncertain_area, dtype=np.float32)
+    weight = tf.where(tf.math.equal(uncertain_area, 1), 1.0, 0.0)
+
+    return weight
+
 
 
 if(__name__=='__main__'):

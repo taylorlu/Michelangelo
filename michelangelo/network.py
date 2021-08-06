@@ -1,6 +1,7 @@
 import tensorflow as tf
 import numpy as np
 from mobilenetv2 import MobileNetV2, MobileNetV2Dec
+from losses import regression_loss, composition_loss, lap_loss
 
 
 class BasicBlock(tf.keras.models.Model):
@@ -138,6 +139,74 @@ class MainBranch(tf.keras.models.Model):
         x_os8 = (tf.nn.tanh(x_os8) + 1.0) / 2.0
 
         return x_os1, x_os4, x_os8
+
+
+class UNetModel(tf.keras.models.Model):
+
+    def __init__(self, debug=False, **kwargs):
+        super(UNetModel, self).__init__(**kwargs)
+        self.mainBranch = MainBranch()
+
+        self.training_input_signature = [
+            tf.TensorSpec(shape=(None, 512, 512, 3), dtype=tf.uint8),
+            tf.TensorSpec(shape=(None, 512, 512), dtype=tf.float32),
+            tf.TensorSpec(shape=(None), dtype=tf.string)
+        ]
+        self.forward_input_signature = [
+            tf.TensorSpec(shape=(None, 512, 512, 3), dtype=tf.uint8)
+        ]
+        self.debug = debug
+        self._apply_all_signatures()
+        self.learning_rate = 0.0001
+
+    @property
+    def step(self):
+        return int(self.optimizer.iterations)
+
+    def _apply_signature(self, function, signature):
+        if self.debug:
+            return function
+        else:
+            return tf.function(input_signature=signature)(function)
+
+    def _apply_all_signatures(self):
+        # self.forward = self._apply_signature(self._forward, self.forward_input_signature)
+        self.train_step = self._apply_signature(self._train_step, self.training_input_signature)
+        # self.val_step = self._apply_signature(self._val_step, self.training_input_signature)
+
+    def _train_step(self, inputs, targets):
+        with tf.GradientTape() as tape:
+            model_out = self.__call__(inputs, training=True)
+            loss = self.loss[0](model_out['x_os1'], targets)
+            loss += self.loss[1](model_out['x_os1'], targets)
+            loss += self.loss[2](model_out['x_os1'], targets)
+
+        model_out.update({'loss': loss})
+        gradients = tape.gradient(loss, self.trainable_variables)
+        self.optimizer.apply_gradients(zip(gradients, self.trainable_variables))
+        return model_out
+
+
+    def call(self, inputs, training):
+        x_os1, x_os4, x_os8 = self.mainBranch(inputs)
+        model_out = {}
+        model_out.update({'x_os1': x_os1, 'x_os4': x_os4, 'x_os8': x_os8})
+        return model_out
+
+    def _compile(self):
+        self.optimizer = tf.keras.optimizers.Adam(self.learning_rate,
+                                                beta_1=0.9,
+                                                beta_2=0.98,
+                                                epsilon=1e-9)
+
+        self.loss_weights = [1., 1.]
+        self.compile(loss=[regression_loss, composition_loss, lap_loss],
+                     loss_weights=self.loss_weights,
+                     optimizer=self.optimizer)
+
+    def set_constants(self, learning_rate: float = None):
+        if learning_rate is not None:
+            self.optimizer.lr.assign(learning_rate)
 
 
 if(__name__=='__main__'):

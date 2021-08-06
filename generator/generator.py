@@ -1,3 +1,4 @@
+from cv2 import data
 import tensorflow as tf
 import cv2, os, random, math, numbers
 import numpy as np
@@ -279,6 +280,8 @@ class Composite():
 
         image = fg * alpha[:, :, None] + bg * (1 - alpha[:, :, None])
         sample['image'] = image.astype(np.uint8)
+        sample['fg'] = fg.astype(np.uint8)
+        sample['alpha'] = alpha.astype(np.float32)
         return sample
 
 
@@ -289,7 +292,6 @@ class DataGenerator():
         self.cropPad512 = CropPad512()
         self.composite = Composite()
 
-    def gen_data(self):
         root_path = Path(r'E:\CVDataset\RealWorldPortrait-636')
         self.alphas = list((root_path / 'alpha').glob('*'))
         self.fgs = list((root_path / 'image').glob('*'))
@@ -297,6 +299,8 @@ class DataGenerator():
 
         self.alphas.sort()
         self.fgs.sort()
+
+    def iterator(self):
 
         for i, alpha in enumerate(self.alphas):
             fg = cv2.imread(str(self.fgs[i]))
@@ -308,12 +312,31 @@ class DataGenerator():
             sample = self.cropPad512(sample)
             sample = self.composite(sample)
 
-            cv2.imwrite('output/'+self.fgs[i].name, sample['image'])
+            yield sample['image'], sample['alpha'], sample['image_name']
+
+    def prepare_dataset(self):
+        dataset = tf.data.Dataset.from_generator(self.iterator, 
+                                                output_signature=(tf.TensorSpec([512, 512, 3], dtype=tf.uint8),
+                                                                  tf.TensorSpec([512, 512], dtype=tf.float32),
+                                                                  tf.TensorSpec([], dtype=tf.string)))
+        dataset = dataset.shuffle(64).repeat(-1).batch(6)
+        self.data_iter = iter(dataset)
+
+    def next_batch(self):
+        return next(self.data_iter)
 
 
 if(__name__=='__main__'):
     generator = DataGenerator()
-    generator.gen_data()
+    generator.prepare_dataset()
+    for i in range(1):
+        image, alpha, image_name = generator.next_batch()
+        # print(i, image_name, image.shape)
+        cv2.imshow('', image.numpy()[1, ...])
+        cv2.waitKey(0)
+        cv2.imshow('', tf.cast(alpha*255, tf.uint8).numpy()[1, ...])
+        cv2.waitKey(0)
+
 
     # img = cv2.imread(r'E:\CVDataset\RealWorldPortrait-636\image\01939_input.jpg')
     # alpha = cv2.imread(r'E:\CVDataset\RealWorldPortrait-636\alpha\01939_input.png')
