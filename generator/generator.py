@@ -17,7 +17,7 @@ class RandomAffine(object):
     """
     Random affine translation
     """
-    def __init__(self, degrees, translate=None, scale=None, shear=None, flip=None, resample=False, fillcolor=0):
+    def __init__(self, degrees, translate=None, scale=None, shear=None, flip=None, resample=False, fillcolor=0, with_bg=False):
         if isinstance(degrees, numbers.Number):
             if degrees < 0:
                 raise ValueError("If degrees is a single number, it must be positive.")
@@ -58,6 +58,7 @@ class RandomAffine(object):
         self.resample = resample
         self.fillcolor = fillcolor
         self.flip = flip
+        self.with_bg = with_bg
 
     @staticmethod
     def get_params(degrees, translate, scale_ranges, shears, flip, img_size):
@@ -92,7 +93,7 @@ class RandomAffine(object):
         return angle, translations, scale, shear, flip
 
     def __call__(self, sample):
-        fg, alpha = sample['fg'], sample['alpha']
+        fg, bg, alpha = sample['fg'], sample['bg'], sample['alpha']
         rows, cols, ch = fg.shape
         if np.maximum(rows, cols) < 1024:
             params = self.get_params((0, 0), self.translate, self.scale, self.shear, self.flip, fg.size)
@@ -108,7 +109,11 @@ class RandomAffine(object):
         alpha = cv2.warpAffine(alpha, M, (cols, rows),
                                flags=maybe_random_interp(cv2.INTER_NEAREST) + cv2.WARP_INVERSE_MAP)
 
-        sample['fg'], sample['alpha'] = fg, alpha
+        if(self.with_bg):
+            bg = cv2.warpAffine(bg, M, (cols, rows),
+                    flags=maybe_random_interp(cv2.INTER_NEAREST) + cv2.WARP_INVERSE_MAP)
+
+        sample['fg'], sample['bg'], sample['alpha'] = fg, bg, alpha
 
         return sample
 
@@ -158,16 +163,23 @@ class RandomJitter(object):
     Random change the hue of the image
     """
 
+    def __init__(self, with_bg=False) -> None:
+        self.with_bg = with_bg
+
     def __call__(self, sample):
-        fg, alpha = sample['fg'], sample['alpha']
+        fg, bg, alpha = sample['fg'], sample['bg'], sample['alpha']
         # if alpha is all 0 skip
         if np.all(alpha==0):
             return sample
         # convert to HSV space, convert to float32 image to keep precision during space conversion.
         fg = cv2.cvtColor(fg.astype(np.float32)/255.0, cv2.COLOR_BGR2HSV)
+        if(self.with_bg):
+            bg = cv2.cvtColor(bg.astype(np.float32)/255.0, cv2.COLOR_BGR2HSV)
         # Hue noise
         hue_jitter = np.random.randint(-40, 40)
         fg[:, :, 0] = np.remainder(fg[:, :, 0].astype(np.float32) + hue_jitter, 360)
+        if(self.with_bg):
+            bg[:, :, 0] = np.remainder(bg[:, :, 0].astype(np.float32) + hue_jitter, 360)
         # Saturation noise
         sat_bar = fg[:, :, 1][alpha > 0].mean()
         sat_jitter = np.random.rand()*(1.1 - sat_bar)/5 - (1.1 - sat_bar) / 10
@@ -175,6 +187,11 @@ class RandomJitter(object):
         sat = np.abs(sat + sat_jitter)
         sat[sat>1] = 2 - sat[sat>1]
         fg[:, :, 1] = sat
+        if(self.with_bg):
+            sat = bg[:, :, 1]
+            sat = np.abs(sat + sat_jitter)
+            sat[sat>1] = 2 - sat[sat>1]
+            bg[:, :, 1] = sat
         # Value noise
         val_bar = fg[:, :, 2][alpha > 0].mean()
         val_jitter = np.random.rand()*(1.1 - val_bar)/5-(1.1 - val_bar) / 10
@@ -185,7 +202,14 @@ class RandomJitter(object):
         # convert back to BGR space
         fg = cv2.cvtColor(fg, cv2.COLOR_HSV2BGR)
         sample['fg'] = fg*255
-
+        if(self.with_bg):
+            val = bg[:, :, 2]
+            val = np.abs(val + val_jitter)
+            val[val>1] = 2 - val[val>1]
+            bg[:, :, 2] = val
+            # convert back to BGR space
+            bg = cv2.cvtColor(bg, cv2.COLOR_HSV2BGR)
+            sample['bg'] = bg*255
         return sample
 
 
@@ -206,25 +230,28 @@ class RandomHorizontalFlip(object):
 
 
 class CropPad512():
-    def __init__(self, prob=0.5, ratio=0.2) -> None:
+    def __init__(self, prob=0.5, ratio=0.2, with_bg=False) -> None:
         self.prob = prob
         self.ratio = ratio
+        self.with_bg = with_bg
 
     def __call__(self, sample):
-        fg, alpha = sample['fg'], sample['alpha']
+        fg, bg, alpha = sample['fg'], sample['bg'], sample['alpha']
         if(len(fg.shape)==2):
             h, w = fg.shape
         else:
             h, w, _ = fg.shape
 
         if(h<=w):
-            if(random.randint(0, 1)<0): #crop
+            if(random.randint(0, 1)<self.prob): #crop
                 border = w - random.randint(0, int(w*self.ratio))
                 if(h>border):
                     ry = random.randint(0, h-border)
                     rx = random.randint(0, w-border)
                     fg = fg[ry:ry+border, rx:rx+border, ...]
                     alpha = alpha[ry:ry+border, rx:rx+border, ...]
+                    if(self.with_bg):
+                        bg = bg[ry:ry+border, rx:rx+border, ...]
                 else:
                     padding = random.randint(0, border-h)
                     rx = random.randint(0, w-border)
@@ -232,20 +259,27 @@ class CropPad512():
                     alpha = np.pad(alpha, ((padding, border-padding-h), (0, 0)))
                     fg = fg[:, rx:rx+border, ...]
                     alpha = alpha[:, rx:rx+border, ...]
+                    if(self.with_bg):
+                        bg = np.pad(bg, ((padding, border-padding-h), (0, 0), (0, 0)))
+                        bg = bg[:, rx:rx+border, ...]
             else:   #padding
                 border = w + random.randint(0, int(w*self.ratio))
                 ry = random.randint(0, border-h)
                 rx = random.randint(0, border-w)
                 fg = np.pad(fg, ((ry, border-ry-h), (rx, border-rx-w), (0, 0)))
                 alpha = np.pad(alpha, ((ry, border-ry-h), (rx, border-rx-w)))
+                if(self.with_bg):
+                    bg = np.pad(bg, ((ry, border-ry-h), (rx, border-rx-w), (0, 0)))
         else:
-            if(random.randint(0, 1)<2): #crop
+            if(random.randint(0, 1)<self.prob): #crop
                 border = h - random.randint(0, int(h*self.ratio))
                 if(w>border):
                     ry = random.randint(0, h-border)
                     rx = random.randint(0, w-border)
                     fg = fg[ry:ry+border, rx:rx+border, ...]
                     alpha = alpha[ry:ry+border, rx:rx+border, ...]
+                    if(self.with_bg):
+                        bg = bg[ry:ry+border, rx:rx+border, ...]
                 else:
                     padding = random.randint(0, border-w)
                     ry = random.randint(0, h-border)
@@ -253,14 +287,19 @@ class CropPad512():
                     alpha = np.pad(alpha, ((0, 0), (padding, border-padding-w)))
                     fg = fg[ry:ry+border, :, ...]
                     alpha = alpha[ry:ry+border, :, ...]
+                    if(self.with_bg):
+                        bg = np.pad(bg, ((0, 0), (padding, border-padding-w), (0, 0)))
+                        bg = bg[ry:ry+border, :, ...]
             else:   #padding
                 border = h + random.randint(0, int(h*self.ratio))
                 ry = random.randint(0, border-w)
                 rx = random.randint(0, border-h)
                 fg = np.pad(fg, ((rx, border-rx-h), (ry, border-ry-w), (0, 0)))
                 alpha = np.pad(alpha, ((rx, border-rx-h), (ry, border-ry-w)))
+                if(self.with_bg):
+                    bg = np.pad(bg, ((rx, border-rx-h), (ry, border-ry-w), (0, 0)))
 
-        sample['fg'], sample['alpha'] = cv2.resize(fg, (512, 512)), cv2.resize(alpha, (512, 512))
+        sample['fg'], sample['bg'], sample['alpha'] = cv2.resize(fg, (512, 512)), cv2.resize(bg, (512, 512)), cv2.resize(alpha, (512, 512))
         return sample
 
 
@@ -293,6 +332,10 @@ class DataGenerator():
         self.cropPad512 = CropPad512()
         self.composite = Composite()
 
+        self.randomAffineAISeg = RandomAffine(degrees=30, scale=[0.8, 1.25], shear=10, flip=0.5, with_bg=True)
+        self.randomJitterAISeg = RandomJitter(with_bg=True)
+        self.cropPad512AISeg = CropPad512(with_bg=True)
+
         root_path = Path(r'E:\CVDataset\RealWorldPortrait-636')
         self.alphas = list((root_path / 'alpha').glob('*'))
         self.fgs = list((root_path / 'image').glob('*'))
@@ -300,6 +343,13 @@ class DataGenerator():
 
         self.alphas.sort()
         self.fgs.sort()
+
+        root_path = Path(r'E:\CVDataset\matting_human_half')
+        self.fgs2 = list((root_path / 'matting').rglob('*.png'))
+        self.bgs2 = list((root_path / 'clip_img').rglob('*.jpg'))
+
+        self.fgs2.sort()
+        self.bgs2.sort()
 
     def iterator(self):
 
@@ -311,6 +361,19 @@ class DataGenerator():
             sample = self.randomAffine(sample)
             sample = self.randomJitter(sample)
             sample = self.cropPad512(sample)
+            sample = self.composite(sample)
+
+            yield sample['image'], sample['fg'], sample['bg'], sample['alpha'], sample['image_name']
+
+        for i, fg in enumerate(self.fgs2):
+            fg = cv2.imread(str(self.fgs2[i]), cv2.IMREAD_UNCHANGED)
+            bg = cv2.imread(str(self.bgs2[i]))
+            alpha = fg[..., -1]/255.0
+            fg = (fg[..., :3] * (fg[..., 3:]/255.0)).astype(np.uint8)
+            sample = {'fg': fg, 'alpha': alpha, 'bg': bg, 'image_name': self.fgs2[i].name}
+            sample = self.randomAffineAISeg(sample)
+            sample = self.randomJitterAISeg(sample)
+            sample = self.cropPad512AISeg(sample)
             sample = self.composite(sample)
 
             yield sample['image'], sample['fg'], sample['bg'], sample['alpha'], sample['image_name']
