@@ -281,6 +281,7 @@ class Composite():
         image = fg * alpha[:, :, None] + bg * (1 - alpha[:, :, None])
         sample['image'] = image.astype(np.uint8)
         sample['fg'] = fg.astype(np.uint8)
+        sample['bg'] = bg.astype(np.uint8)
         sample['alpha'] = alpha.astype(np.float32)
         return sample
 
@@ -312,11 +313,12 @@ class DataGenerator():
             sample = self.cropPad512(sample)
             sample = self.composite(sample)
 
-            yield sample['image'], sample['alpha'], sample['image_name']
+            yield sample['image'], sample['bg'], sample['alpha'], sample['image_name']
 
     def prepare_dataset(self):
         dataset = tf.data.Dataset.from_generator(self.iterator, 
                                                 output_signature=(tf.TensorSpec([512, 512, 3], dtype=tf.uint8),
+                                                                  tf.TensorSpec([512, 512, 3], dtype=tf.uint8),
                                                                   tf.TensorSpec([512, 512], dtype=tf.float32),
                                                                   tf.TensorSpec([], dtype=tf.string)))
         dataset = dataset.shuffle(64).repeat(-1).batch(6)
@@ -330,15 +332,11 @@ if(__name__=='__main__'):
     generator = DataGenerator()
     generator.prepare_dataset()
     for i in range(1):
-        image, alpha, image_name = generator.next_batch()
+        image, bg, alpha, image_name = generator.next_batch()
         # print(i, image_name, image.shape)
         cv2.imshow('', image.numpy()[1, ...])
         cv2.waitKey(0)
         cv2.imshow('', tf.cast(alpha*255, tf.uint8).numpy()[1, ...])
         cv2.waitKey(0)
-
-
-    # img = cv2.imread(r'E:\CVDataset\RealWorldPortrait-636\image\01939_input.jpg')
-    # alpha = cv2.imread(r'E:\CVDataset\RealWorldPortrait-636\alpha\01939_input.png')
-    # img = (img * (alpha/255.0)).astype(np.uint8)
-    # cv2.imwrite('test.jpg', img)
+        cv2.imshow('', bg.numpy()[1, ...])
+        cv2.waitKey(0)
