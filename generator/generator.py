@@ -313,11 +313,12 @@ class DataGenerator():
             sample = self.cropPad512(sample)
             sample = self.composite(sample)
 
-            yield sample['image'], sample['bg'], sample['alpha'], sample['image_name']
+            yield sample['image'], sample['fg'], sample['bg'], sample['alpha'], sample['image_name']
 
     def prepare_dataset(self):
         dataset = tf.data.Dataset.from_generator(self.iterator, 
                                                 output_signature=(tf.TensorSpec([512, 512, 3], dtype=tf.uint8),
+                                                                  tf.TensorSpec([512, 512, 3], dtype=tf.uint8),
                                                                   tf.TensorSpec([512, 512, 3], dtype=tf.uint8),
                                                                   tf.TensorSpec([512, 512], dtype=tf.float32),
                                                                   tf.TensorSpec([], dtype=tf.string)))
@@ -332,11 +333,13 @@ if(__name__=='__main__'):
     generator = DataGenerator()
     generator.prepare_dataset()
     for i in range(1):
-        image, bg, alpha, image_name = generator.next_batch()
+        image, fg, bg, alpha, image_name = generator.next_batch()
         # print(i, image_name, image.shape)
         cv2.imshow('', image.numpy()[1, ...])
         cv2.waitKey(0)
         cv2.imshow('', tf.cast(alpha*255, tf.uint8).numpy()[1, ...])
+        cv2.waitKey(0)
+        cv2.imshow('', fg.numpy()[1, ...])
         cv2.waitKey(0)
         cv2.imshow('', bg.numpy()[1, ...])
         cv2.waitKey(0)

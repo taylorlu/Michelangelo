@@ -1,7 +1,7 @@
 import tensorflow as tf
 import numpy as np
 from mobilenetv2 import MobileNetV2, MobileNetV2Dec
-from losses import regression_loss, composition_loss, lap_loss
+from losses import regression_loss, composition_loss, lap_loss, get_unknown_tensor_from_pred
 
 
 class BasicBlock(tf.keras.models.Model):
@@ -149,6 +149,8 @@ class UNetModel(tf.keras.models.Model):
 
         self.training_input_signature = [
             tf.TensorSpec(shape=(None, 512, 512, 3), dtype=tf.uint8),
+            tf.TensorSpec(shape=(None, 512, 512, 3), dtype=tf.uint8),
+            tf.TensorSpec(shape=(None, 512, 512, 3), dtype=tf.uint8),
             tf.TensorSpec(shape=(None, 512, 512), dtype=tf.float32),
             tf.TensorSpec(shape=(None), dtype=tf.string)
         ]
@@ -174,16 +176,38 @@ class UNetModel(tf.keras.models.Model):
         self.train_step = self._apply_signature(self._train_step, self.training_input_signature)
         # self.val_step = self._apply_signature(self._val_step, self.training_input_signature)
 
-    def _train_step(self, inputs, targets):
+    def _train_step(self, inputs, fg, bg, alpha, image_name):
         with tf.GradientTape() as tape:
             model_out = self.__call__(inputs, training=True)
-            loss = self.loss[0](model_out['x_os1'], targets)
-            loss += self.loss[1](model_out['x_os1'], targets)
-            loss += self.loss[2](model_out['x_os1'], targets)
 
-        model_out.update({'loss': loss})
-        gradients = tape.gradient(loss, self.trainable_variables)
-        self.optimizer.apply_gradients(zip(gradients, self.trainable_variables))
+            alpha_pred_os1, alpha_pred_os4, alpha_pred_os8 = model_out['x_os1'], model_out['x_os4'], model_out['x_os8']
+
+            weight_os8 = tf.ones_like(alpha_pred_os8, dtype=np.float32)
+            weight_os4 = get_unknown_tensor_from_pred(alpha_pred_os8)
+            weight_os1 = get_unknown_tensor_from_pred(alpha_pred_os4)
+
+            self.loss_dict = {}
+            self.loss_dict['rec'] = (self.loss[0](alpha_pred_os8, alpha, weight=weight_os8) *1) +\
+                                    (self.loss[0](alpha_pred_os4, alpha, weight=weight_os4) *1) +\
+                                    (self.loss[0](alpha_pred_os1, alpha, weight=weight_os1) *2)
+
+            self.loss_dict['comp'] = (self.loss[1](alpha_pred_os8, fg, bg, inputs, weight=weight_os8) *1) +\
+                                     (self.loss[1](alpha_pred_os4, fg, bg, inputs, weight=weight_os4) *1) +\
+                                     (self.loss[1](alpha_pred_os1, fg, bg, inputs, weight=weight_os1) *2)
+
+            self.loss_dict['lap'] = (self.loss[2](alpha_pred_os8, alpha, weight=weight_os8) *1) +\
+                                    (self.loss[2](alpha_pred_os4, alpha, weight=weight_os4) *1) +\
+                                    (self.loss[2](alpha_pred_os1, alpha, weight=weight_os1) *2)
+
+            loss = 0
+            for loss_key in self.loss_dict.keys():
+                if self.loss_dict[loss_key] is not None and loss_key in ['rec', 'comp', 'lap']:
+                    loss += self.loss_dict[loss_key]
+
+            model_out.update({'loss': loss})
+            gradients = tape.gradient(loss, self.trainable_variables)
+            self.optimizer.apply_gradients(zip(gradients, self.trainable_variables))
+
         return model_out
 
 
