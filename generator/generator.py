@@ -363,7 +363,7 @@ class DataGenerator():
             sample = self.cropPad512(sample)
             sample = self.composite(sample)
 
-            yield sample['image'], sample['fg'], sample['bg'], sample['alpha'], sample['image_name']
+            yield sample['image'], sample['fg'], sample['bg'], sample['alpha'][..., np.newaxis], sample['image_name']
 
         for i, fg in enumerate(self.fgs2):
             fg = cv2.imread(str(self.fgs2[i]), cv2.IMREAD_UNCHANGED)
@@ -376,16 +376,16 @@ class DataGenerator():
             sample = self.cropPad512AISeg(sample)
             sample = self.composite(sample)
 
-            yield sample['image'], sample['fg'], sample['bg'], sample['alpha'], sample['image_name']
+            yield sample['image'].astype(np.float32), sample['fg'].astype(np.float32), sample['bg'].astype(np.float32), sample['alpha'][..., np.newaxis], sample['image_name']
 
     def prepare_dataset(self):
         dataset = tf.data.Dataset.from_generator(self.iterator, 
-                                                output_signature=(tf.TensorSpec([512, 512, 3], dtype=tf.uint8),
-                                                                  tf.TensorSpec([512, 512, 3], dtype=tf.uint8),
-                                                                  tf.TensorSpec([512, 512, 3], dtype=tf.uint8),
-                                                                  tf.TensorSpec([512, 512], dtype=tf.float32),
+                                                output_signature=(tf.TensorSpec([512, 512, 3], dtype=tf.float32),
+                                                                  tf.TensorSpec([512, 512, 3], dtype=tf.float32),
+                                                                  tf.TensorSpec([512, 512, 3], dtype=tf.float32),
+                                                                  tf.TensorSpec([512, 512, 1], dtype=tf.float32),
                                                                   tf.TensorSpec([], dtype=tf.string)))
-        dataset = dataset.shuffle(64).repeat(-1).batch(6)
+        dataset = dataset.shuffle(64).repeat(-1).batch(3)
         self.data_iter = iter(dataset)
 
     def next_batch(self):

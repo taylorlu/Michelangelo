@@ -1,8 +1,5 @@
 import tensorflow as tf
 import random
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
 import cv2
 import numpy as np
 
@@ -49,20 +46,20 @@ def lap_loss(logit, target, weight):
     gauss_filter /= 256.
     gauss_filter = np.transpose(gauss_filter, [2, 3, 0, 1])
 
-    def conv_gauss(x, gauss_filter):
+    def conv_gauss(x, filter):
         x = tf.pad(x, paddings=[[0,0], [2,2], [2,2], [0,0]], mode='REFLECT')
-        x = tf.nn.conv2d(x, gauss_filter, strides=1, padding='VALID')
+        x = tf.nn.conv2d(x, filter, strides=1, padding='VALID')
         return x
 
     def downsample(x):
-        return x[:, :, ::2, ::2]
+        return x[:, ::2, ::2, :]
 
     def upsample(x):
         cc = tf.concat([x, tf.zeros_like(x)], 2)
-        cc = tf.reshape(cc, [cc.shape[0], -1, x.shape[2], cc.shape[3]])
+        cc = tf.reshape(cc, [-1, x.shape[1]*2, x.shape[2], cc.shape[3]])
         cc = tf.transpose(cc, [0, 2, 1, 3])
         cc = tf.concat([cc, tf.zeros_like(cc)], 2)
-        cc = tf.reshape(cc, [cc.shape[0], x.shape[1]*2, x.shape[2]*2, cc.shape[3]])
+        cc = tf.reshape(cc, [-1, x.shape[1]*2, x.shape[2]*2, cc.shape[3]])
         x_up = tf.transpose(cc, [0, 2, 1, 3])
         return conv_gauss(x_up, 4*gauss_filter)
 
@@ -70,7 +67,7 @@ def lap_loss(logit, target, weight):
         current = x
         pyr = []
         for level in range(max_levels):
-            filtered = conv_gauss(current)
+            filtered = conv_gauss(current, gauss_filter)
             down = downsample(filtered)
             up = upsample(down)
             diff = current - up

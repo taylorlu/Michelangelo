@@ -1,7 +1,9 @@
 import tensorflow as tf
 import numpy as np
-from mobilenetv2 import MobileNetV2, MobileNetV2Dec
-from losses import regression_loss, composition_loss, lap_loss, get_unknown_tensor_from_pred
+from michelangelo.mobilenetv2 import MobileNetV2, MobileNetV2Dec, while_loop
+from michelangelo.losses import regression_loss, composition_loss, lap_loss, get_unknown_tensor_from_pred
+# from mobilenetv2 import MobileNetV2, MobileNetV2Dec
+# from losses import regression_loss, composition_loss, lap_loss, get_unknown_tensor_from_pred
 
 
 class BasicBlock(tf.keras.models.Model):
@@ -29,13 +31,13 @@ class SEBlock(tf.keras.models.Model):
     def __init__(self, filterIn, filterOut, reduction=1):
         super(SEBlock, self).__init__()
         self.pool = tf.keras.layers.GlobalAveragePooling2D()
-        self.fc = tf.keras.Sequential([tf.keras.layers.Dense(int(filterIn // reduction), use_bias=False),
-                                       tf.keras.layers.ReLU(),
-                                       tf.keras.layers.Dense(filterOut, use_bias=False, activation='sigmoid')])
+        self.fc = [tf.keras.layers.Dense(int(filterIn // reduction), use_bias=False),
+                    tf.keras.layers.ReLU(),
+                    tf.keras.layers.Dense(filterOut, use_bias=False, activation='sigmoid')]
 
     def call(self, x):
         w = self.pool(x)
-        w = self.fc(w)
+        w = while_loop(self.fc, w)
         w = tf.expand_dims(tf.expand_dims(w, axis=1), axis=1)
         return x * w
 
@@ -81,7 +83,7 @@ class ASPP(tf.keras.models.Model):
         x5 = self.aspp5(x5)
         x5 = self.aspp5_bn(x5)
         x5 = self.relu(x5)
-        x5 = tf.keras.layers.UpSampling2D(size=(tf.shape(x)[1], tf.shape(x)[2]))(x5)
+        x5 = tf.keras.layers.UpSampling2D(size=(16, 16))(x5)
         x = tf.concat([x1, x2, x3, x4, x5], axis=-1)
         x = self.conv(x)
         x = self.bn(x)
@@ -95,7 +97,6 @@ class MainBranch(tf.keras.models.Model):
 
         self.encoder = MobileNetV2()
         enc_filters = self.encoder.enc_filters
-        print(enc_filters)
 
         self.aspp = ASPP(enc_filters[4])
         self.se_block = SEBlock(enc_filters[4], enc_filters[4], reduction=4)
@@ -121,17 +122,17 @@ class MainBranch(tf.keras.models.Model):
         x = self.aspp(fea5)
         x = self.se_block(x)
 
-        x = self.layer1(x) + fea4
-        x = self.layer2(x) + fea3   #(None, 64, 64, 32)
+        x = while_loop(self.layer1, x) + fea4
+        x = while_loop(self.layer2, x) + fea3   #(None, 64, 64, 32)
         x_os8 = self.refine_OS8(x)  #(None, 64, 64, 1)
         x_os8 = self.up8x8(x_os8)   #(None, 512, 512, 1)
 
-        x = self.layer3(x) + fea2   #(None, 128, 128, 24)
+        x = while_loop(self.layer3, x) + fea2   #(None, 128, 128, 24)
         x_os4 = self.refine_OS4(x)  #(None, 128, 128, 1)
         x_os4 = self.up4x4(x_os4)   #(None, 512, 512, 1)
 
-        x = self.layer4(x) + fea1   #(None, 256, 256, 16)
-        x = self.layer5(x)          #(None, 512, 512, 3)
+        x = while_loop(self.layer4, x) + fea1   #(None, 256, 256, 16)
+        x = while_loop(self.layer5, x)          #(None, 512, 512, 3)
         x_os1 = self.refine_OS1(x)  #(None, 512, 512, 1)
 
         x_os1 = (tf.nn.tanh(x_os1) + 1.0) / 2.0
@@ -148,18 +149,22 @@ class UNetModel(tf.keras.models.Model):
         self.mainBranch = MainBranch()
 
         self.training_input_signature = [
-            tf.TensorSpec(shape=(None, 512, 512, 3), dtype=tf.uint8),
-            tf.TensorSpec(shape=(None, 512, 512, 3), dtype=tf.uint8),
-            tf.TensorSpec(shape=(None, 512, 512, 3), dtype=tf.uint8),
-            tf.TensorSpec(shape=(None, 512, 512), dtype=tf.float32),
+            tf.TensorSpec(shape=(None, 512, 512, 3), dtype=tf.float32),
+            tf.TensorSpec(shape=(None, 512, 512, 3), dtype=tf.float32),
+            tf.TensorSpec(shape=(None, 512, 512, 3), dtype=tf.float32),
+            tf.TensorSpec(shape=(None, 512, 512, 1), dtype=tf.float32),
             tf.TensorSpec(shape=(None), dtype=tf.string)
         ]
         self.forward_input_signature = [
-            tf.TensorSpec(shape=(None, 512, 512, 3), dtype=tf.uint8)
+            tf.TensorSpec(shape=(None, 512, 512, 3), dtype=tf.float32)
         ]
         self.debug = debug
-        self._apply_all_signatures()
         self.learning_rate = 0.0001
+        self.optimizer = tf.keras.optimizers.Adam(self.learning_rate,
+                                                beta_1=0.9,
+                                                beta_2=0.98,
+                                                epsilon=1e-9)
+        self._apply_all_signatures()
 
     @property
     def step(self):
@@ -218,12 +223,7 @@ class UNetModel(tf.keras.models.Model):
         return model_out
 
     def _compile(self):
-        self.optimizer = tf.keras.optimizers.Adam(self.learning_rate,
-                                                beta_1=0.9,
-                                                beta_2=0.98,
-                                                epsilon=1e-9)
-
-        self.loss_weights = [1., 1.]
+        self.loss_weights = [1., 1., 1.]
         self.compile(loss=[regression_loss, composition_loss, lap_loss],
                      loss_weights=self.loss_weights,
                      optimizer=self.optimizer)
