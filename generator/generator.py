@@ -363,7 +363,11 @@ class DataGenerator():
             sample = self.cropPad512(sample)
             sample = self.composite(sample)
 
-            yield sample['image'], sample['fg'], sample['bg'], sample['alpha'][..., np.newaxis], sample['image_name']
+            yield sample['image'].astype(np.float32)/255., \
+                  sample['fg'].astype(np.float32)/255., \
+                  sample['bg'].astype(np.float32)/255., \
+                  sample['alpha'][..., np.newaxis], \
+                  sample['image_name']
 
         for i, fg in enumerate(self.fgs2):
             fg = cv2.imread(str(self.fgs2[i]), cv2.IMREAD_UNCHANGED)
@@ -376,7 +380,11 @@ class DataGenerator():
             sample = self.cropPad512AISeg(sample)
             sample = self.composite(sample)
 
-            yield sample['image'].astype(np.float32), sample['fg'].astype(np.float32), sample['bg'].astype(np.float32), sample['alpha'][..., np.newaxis], sample['image_name']
+            yield sample['image'].astype(np.float32)/255., \
+                  sample['fg'].astype(np.float32)/255., \
+                  sample['bg'].astype(np.float32)/255., \
+                  sample['alpha'][..., np.newaxis], \
+                  sample['image_name']
 
     def prepare_dataset(self):
         dataset = tf.data.Dataset.from_generator(self.iterator, 
@@ -398,11 +406,11 @@ if(__name__=='__main__'):
     for i in range(1):
         image, fg, bg, alpha, image_name = generator.next_batch()
         # print(i, image_name, image.shape)
-        cv2.imshow('', image.numpy()[1, ...])
+        cv2.imshow('', (255*image).numpy().astype(np.uint8)[1, ...])
         cv2.waitKey(0)
         cv2.imshow('', tf.cast(alpha*255, tf.uint8).numpy()[1, ...])
         cv2.waitKey(0)
-        cv2.imshow('', fg.numpy()[1, ...])
+        cv2.imshow('', (255*fg).numpy().astype(np.uint8)[1, ...])
         cv2.waitKey(0)
-        cv2.imshow('', bg.numpy()[1, ...])
+        cv2.imshow('', (255*bg).numpy().astype(np.uint8)[1, ...])
         cv2.waitKey(0)
