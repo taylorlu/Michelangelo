@@ -351,8 +351,7 @@ class DataGenerator():
         self.fgs2.sort()
         self.bgs2.sort()
 
-    def iterator(self):
-
+    def process636(self):
         for i, alpha in enumerate(self.alphas):
             fg = cv2.imread(str(self.fgs[i]))
             alpha = cv2.imread(str(alpha))[..., 0]/255.0
@@ -369,6 +368,7 @@ class DataGenerator():
                   sample['alpha'][..., np.newaxis], \
                   sample['image_name']
 
+    def processHalf(self):
         for i, fg in enumerate(self.fgs2):
             fg = cv2.imread(str(self.fgs2[i]), cv2.IMREAD_UNCHANGED)
             bg = cv2.imread(str(self.bgs2[i]))
@@ -385,6 +385,12 @@ class DataGenerator():
                   sample['bg'].astype(np.float32)/255., \
                   sample['alpha'][..., np.newaxis], \
                   sample['image_name']
+
+    def iterator(self):
+        if(random.randint(0, 1)==0):
+            return self.process636()
+        else:
+            return self.processHalf()
 
     def prepare_dataset(self):
         dataset = tf.data.Dataset.from_generator(self.iterator, 
