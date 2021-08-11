@@ -35,6 +35,6 @@ if(__name__=='__main__'):
 
         if((model.step+1)%100==0):
             output = model.test_step(inputs=image)
-            cv2.imwrite(f'output/alpha_pred_os1_{model.step}.jpg', (output['alpha_pred_os1']*255).astype(np.uint8))
-            cv2.imwrite(f'output/alpha_pred_os4_{model.step}.jpg', (output['alpha_pred_os4']*255).astype(np.uint8))
-            cv2.imwrite(f'output/alpha_pred_os8_{model.step}.jpg', (output['alpha_pred_os8']*255).astype(np.uint8))
+            cv2.imwrite(f'output/alpha_pred_os1_{model.step+1}.jpg', (output['alpha_pred_os1'].numpy()[0, ...]*255).astype(np.uint8))
+            cv2.imwrite(f'output/alpha_pred_os4_{model.step+1}.jpg', (output['alpha_pred_os4'].numpy()[0, ...]*255).astype(np.uint8))
+            cv2.imwrite(f'output/alpha_pred_os8_{model.step+1}.jpg', (output['alpha_pred_os8'].numpy()[0, ...]*255).astype(np.uint8))
