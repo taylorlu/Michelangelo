@@ -17,6 +17,13 @@ if(__name__=='__main__'):
     train_dataset = DataGenerator()
     train_dataset.prepare_dataset()
 
+    checkpoint = tf.train.Checkpoint(step=tf.Variable(1),
+                                     optimizer=model.optimizer,
+                                     net=model)
+    manager = tf.train.CheckpointManager(checkpoint, 'latest',
+                                         max_to_keep=5,
+                                         keep_checkpoint_every_n_hours=5)
+
     losses = []
     t = trange(model.step, 100000, leave=True)
     for _ in t:
@@ -38,3 +45,6 @@ if(__name__=='__main__'):
             cv2.imwrite(f'output/alpha_pred_os1_{model.step+1}.jpg', (output['alpha_pred_os1'].numpy()[0, ...]*255).astype(np.uint8))
             cv2.imwrite(f'output/alpha_pred_os4_{model.step+1}.jpg', (output['alpha_pred_os4'].numpy()[0, ...]*255).astype(np.uint8))
             cv2.imwrite(f'output/alpha_pred_os8_{model.step+1}.jpg', (output['alpha_pred_os8'].numpy()[0, ...]*255).astype(np.uint8))
+
+        if((model.step+1)%5000==0):
+            manager.save()
