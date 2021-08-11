@@ -19,12 +19,12 @@ def dynamic_memory_allocation():
 
 dynamic_memory_allocation()
 
-def while_loop(layer, x):
+def while_loop(layer, x, training=True):
     if(isinstance(layer, list)):
         for l in layer:
             x = while_loop(l, x)
     else:
-        x = layer(x)
+        x = layer(x, training=training)
     return x
 
 
@@ -51,16 +51,16 @@ class InvertedResidual(tf.keras.models.Model):
             self.convlist.append(tf.keras.layers.Conv2D(filterOut, 1, (1, 1), 'valid', use_bias=False))
             self.convlist.append(tf.keras.layers.BatchNormalization())
 
-    def call(self, x):
+    def call(self, x, training=True):
         if(self.use_res_connect):
             current = x
             for conv in self.convlist:
-                x = conv(x)
+                x = conv(x, training=training)
             x += current
             return x
         else:
             for conv in self.convlist:
-                x = conv(x)
+                x = conv(x, training=training)
             return x
 
 
@@ -87,16 +87,16 @@ class Residual(tf.keras.models.Model):
             self.convlist.append(tf.keras.layers.Conv2D(filterOut, 1, (1, 1), 'valid', use_bias=False))
             self.convlist.append(tf.keras.layers.BatchNormalization())
 
-    def call(self, x):
+    def call(self, x, training=True):
         if(self.use_res_connect):
             current = x
             for conv in self.convlist:
-                x = conv(x)
+                x = conv(x, training=training)
             x += current
             return x
         else:
             for conv in self.convlist:
-                x = conv(x)
+                x = conv(x, training=training)
             return x
 
 
@@ -144,22 +144,22 @@ class MobileNetV2(tf.keras.models.Model):
                 tf.keras.layers.BatchNormalization(),
                 tf.keras.layers.ReLU(max_value=6)]
 
-    def call(self, x):
+    def call(self, x, training=True):
 
         # Stage1
-        x = reduce(lambda x, n: while_loop(self.features[n], x), list(range(0,2)), x)
+        x = reduce(lambda x, n: while_loop(self.features[n], x, training), list(range(0,2)), x)
         enc2x = x
         # Stage2
-        x = reduce(lambda x, n: while_loop(self.features[n], x), list(range(2,4)), x)
+        x = reduce(lambda x, n: while_loop(self.features[n], x, training), list(range(2,4)), x)
         enc4x = x
         # Stage3
-        x = reduce(lambda x, n: while_loop(self.features[n], x), list(range(4,7)), x)
+        x = reduce(lambda x, n: while_loop(self.features[n], x, training), list(range(4,7)), x)
         enc8x = x
         # Stage4
-        x = reduce(lambda x, n: while_loop(self.features[n], x), list(range(7,14)), x)
+        x = reduce(lambda x, n: while_loop(self.features[n], x, training), list(range(7,14)), x)
         enc16x = x
         # Stage5
-        x = reduce(lambda x, n: while_loop(self.features[n], x), list(range(14,19)), x)
+        x = reduce(lambda x, n: while_loop(self.features[n], x, training), list(range(14,19)), x)
         enc32x = x
 
         return [enc2x, enc4x, enc8x, enc16x, enc32x]

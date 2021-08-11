@@ -19,9 +19,9 @@ class BasicBlock(tf.keras.models.Model):
         self.leakyRelu = tf.keras.layers.LeakyReLU(0.2)
         self.conv2 = tf.keras.layers.Conv2D(filterOut, 3, (1, 1), 'same', use_bias=False)
 
-    def call(self, x):
+    def call(self, x, training=True):
         out = self.conv1(x)
-        out = self.bn1(out)
+        out = self.bn1(out, training=training)
         out = self.leakyRelu(out)
         out = self.conv2(out)
         return out
@@ -35,9 +35,9 @@ class SEBlock(tf.keras.models.Model):
                     tf.keras.layers.ReLU(),
                     tf.keras.layers.Dense(filterOut, use_bias=False, activation='sigmoid')]
 
-    def call(self, x):
+    def call(self, x, training=True):
         w = self.pool(x)
-        w = while_loop(self.fc, w)
+        w = while_loop(self.fc, w, training)
         w = tf.expand_dims(tf.expand_dims(w, axis=1), axis=1)
         return x * w
 
@@ -65,28 +65,28 @@ class ASPP(tf.keras.models.Model):
         self.conv = tf.keras.layers.Conv2D(filter, 1, (1, 1), 'same', use_bias=False)
         self.bn = tf.keras.layers.BatchNormalization()
 
-    def call(self, x):
+    def call(self, x, training=True):
         x1 = self.aspp1(x)
-        x1 = self.aspp1_bn(x1)
+        x1 = self.aspp1_bn(x1, training=training)
         x1 = self.relu(x1)
         x2 = self.aspp2(x)
-        x2 = self.aspp2_bn(x2)
+        x2 = self.aspp2_bn(x2, training=training)
         x2 = self.relu(x2)
         x3 = self.aspp3(x)
-        x3 = self.aspp3_bn(x3)
+        x3 = self.aspp3_bn(x3, training=training)
         x3 = self.relu(x3)
         x4 = self.aspp4(x)
-        x4 = self.aspp4_bn(x4)
+        x4 = self.aspp4_bn(x4, training=training)
         x4 = self.relu(x4)
         x5 = self.pool(x)
         x5 = tf.expand_dims(tf.expand_dims(x5, 1), 1)
         x5 = self.aspp5(x5)
-        x5 = self.aspp5_bn(x5)
+        x5 = self.aspp5_bn(x5, training=training)
         x5 = self.relu(x5)
         x5 = tf.keras.layers.UpSampling2D(size=(16, 16))(x5)
         x = tf.concat([x1, x2, x3, x4, x5], axis=-1)
         x = self.conv(x)
-        x = self.bn(x)
+        x = self.bn(x, training=training)
         x = self.relu(x)
         return x
 
@@ -115,25 +115,25 @@ class MainBranch(tf.keras.models.Model):
         self.up8x8 = tf.keras.layers.UpSampling2D(size=(8, 8), interpolation='bilinear')
         self.up4x4 = tf.keras.layers.UpSampling2D(size=(4, 4), interpolation='bilinear')
 
-    def call(self, img):
-        enc_features = self.encoder(img)
+    def call(self, img, training=True):
+        enc_features = self.encoder(img, training)
         fea1, fea2, fea3, fea4, fea5 = enc_features
 
-        x = self.aspp(fea5)
-        x = self.se_block(x)
+        x = self.aspp(fea5, training)
+        x = self.se_block(x, training)
 
-        x = while_loop(self.layer1, x) + fea4
-        x = while_loop(self.layer2, x) + fea3   #(None, 64, 64, 32)
-        x_os8 = self.refine_OS8(x)  #(None, 64, 64, 1)
+        x = while_loop(self.layer1, x, training) + fea4
+        x = while_loop(self.layer2, x, training) + fea3   #(None, 64, 64, 32)
+        x_os8 = self.refine_OS8(x, training)  #(None, 64, 64, 1)
         x_os8 = self.up8x8(x_os8)   #(None, 512, 512, 1)
 
-        x = while_loop(self.layer3, x) + fea2   #(None, 128, 128, 24)
-        x_os4 = self.refine_OS4(x)  #(None, 128, 128, 1)
+        x = while_loop(self.layer3, x, training) + fea2   #(None, 128, 128, 24)
+        x_os4 = self.refine_OS4(x, training)  #(None, 128, 128, 1)
         x_os4 = self.up4x4(x_os4)   #(None, 512, 512, 1)
 
-        x = while_loop(self.layer4, x) + fea1   #(None, 256, 256, 16)
-        x = while_loop(self.layer5, x)          #(None, 512, 512, 3)
-        x_os1 = self.refine_OS1(x)  #(None, 512, 512, 1)
+        x = while_loop(self.layer4, x, training) + fea1   #(None, 256, 256, 16)
+        x = while_loop(self.layer5, x, training)          #(None, 512, 512, 3)
+        x_os1 = self.refine_OS1(x, training)  #(None, 512, 512, 1)
 
         x_os1 = (tf.nn.tanh(x_os1) + 1.0) / 2.0
         x_os4 = (tf.nn.tanh(x_os4) + 1.0) / 2.0
@@ -216,8 +216,8 @@ class UNetModel(tf.keras.models.Model):
         return model_out
 
 
-    def call(self, inputs, training):
-        x_os1, x_os4, x_os8 = self.mainBranch(inputs)
+    def call(self, inputs, training=True):
+        x_os1, x_os4, x_os8 = self.mainBranch(inputs, training)
         model_out = {}
         model_out.update({'x_os1': x_os1, 'x_os4': x_os4, 'x_os8': x_os8})
         return model_out
