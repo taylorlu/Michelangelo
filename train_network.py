@@ -12,6 +12,7 @@ os.environ["CUDA_VISIBLE_DEVICES"] = '0'
 if(__name__=='__main__'):
     
     model = UNetModel()
+    model._compile()
 
     train_dataset = DataGenerator()
     train_dataset.prepare_dataset()
@@ -23,7 +24,6 @@ if(__name__=='__main__'):
         image, fg, bg, alpha, image_name = train_dataset.next_batch()
         # learning_rate = piecewise_linear_schedule(model.step, config_dict['learning_rate_schedule'])
         # model.set_constants(learning_rate=learning_rate)
-        model._compile()
 
         output = model.train_step(inputs=image,
                                   fg=fg,
@@ -31,4 +31,4 @@ if(__name__=='__main__'):
                                   alpha=alpha,
                                   image_name=image_name)
 
-        # losses.append(float(output['loss']))
+        t.display(f"step loss: {output['loss']}", pos=1)
