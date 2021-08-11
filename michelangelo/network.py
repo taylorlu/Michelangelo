@@ -155,7 +155,7 @@ class UNetModel(tf.keras.models.Model):
             tf.TensorSpec(shape=(None, 512, 512, 1), dtype=tf.float32),
             tf.TensorSpec(shape=(None), dtype=tf.string)
         ]
-        self.forward_input_signature = [
+        self.test_input_signature = [
             tf.TensorSpec(shape=(None, 512, 512, 3), dtype=tf.float32)
         ]
         self.debug = debug
@@ -177,9 +177,8 @@ class UNetModel(tf.keras.models.Model):
             return tf.function(input_signature=signature)(function)
 
     def _apply_all_signatures(self):
-        # self.forward = self._apply_signature(self._forward, self.forward_input_signature)
         self.train_step = self._apply_signature(self._train_step, self.training_input_signature)
-        # self.val_step = self._apply_signature(self._val_step, self.training_input_signature)
+        self.test_step = self._apply_signature(self._test_step, self.test_input_signature)
 
     def _train_step(self, inputs, fg, bg, alpha, image_name):
         with tf.GradientTape() as tape:
@@ -215,6 +214,17 @@ class UNetModel(tf.keras.models.Model):
 
         return model_out
 
+    def _test_step(self, inputs):
+        with tf.GradientTape() as tape:
+            model_out = self.__call__(inputs, training=False)
+
+            alpha_pred_os1, alpha_pred_os4, alpha_pred_os8 = model_out['x_os1'], model_out['x_os4'], model_out['x_os8']
+
+            model_out.update({'alpha_pred_os1': alpha_pred_os1})
+            model_out.update({'alpha_pred_os4': alpha_pred_os4})
+            model_out.update({'alpha_pred_os8': alpha_pred_os8})
+
+        return model_out
 
     def call(self, inputs, training=True):
         x_os1, x_os4, x_os8 = self.mainBranch(inputs, training)

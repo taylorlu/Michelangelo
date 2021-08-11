@@ -32,3 +32,9 @@ if(__name__=='__main__'):
                                   image_name=image_name)
 
         t.display(f"step loss: {output['loss']}", pos=1)
+
+        if((model.step+1)%100==0):
+            output = model.test_step(inputs=image)
+            cv2.imwrite(f'output/alpha_pred_os1_{model.step}.jpg', (output['alpha_pred_os1']*255).astype(np.uint8))
+            cv2.imwrite(f'output/alpha_pred_os4_{model.step}.jpg', (output['alpha_pred_os4']*255).astype(np.uint8))
+            cv2.imwrite(f'output/alpha_pred_os8_{model.step}.jpg', (output['alpha_pred_os8']*255).astype(np.uint8))
