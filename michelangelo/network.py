@@ -215,14 +215,13 @@ class UNetModel(tf.keras.models.Model):
         return model_out
 
     def _test_step(self, inputs):
-        with tf.GradientTape() as tape:
-            model_out = self.__call__(inputs, training=False)
+        model_out = self.__call__(inputs, training=False)
 
-            alpha_pred_os1, alpha_pred_os4, alpha_pred_os8 = model_out['x_os1'], model_out['x_os4'], model_out['x_os8']
+        alpha_pred_os1, alpha_pred_os4, alpha_pred_os8 = model_out['x_os1'], model_out['x_os4'], model_out['x_os8']
 
-            model_out.update({'alpha_pred_os1': alpha_pred_os1})
-            model_out.update({'alpha_pred_os4': alpha_pred_os4})
-            model_out.update({'alpha_pred_os8': alpha_pred_os8})
+        model_out.update({'alpha_pred_os1': alpha_pred_os1})
+        model_out.update({'alpha_pred_os4': alpha_pred_os4})
+        model_out.update({'alpha_pred_os8': alpha_pred_os8})
 
         return model_out
 
