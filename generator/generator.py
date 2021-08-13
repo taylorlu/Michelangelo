@@ -399,7 +399,7 @@ class DataGenerator():
                                                                   tf.TensorSpec([512, 512, 3], dtype=tf.float32),
                                                                   tf.TensorSpec([512, 512, 1], dtype=tf.float32),
                                                                   tf.TensorSpec([], dtype=tf.string)))
-        dataset = dataset.shuffle(64).repeat(-1).batch(3)
+        dataset = dataset.shuffle(64).repeat(-1).batch(12)
         self.data_iter = iter(dataset)
 
     def next_batch(self):
