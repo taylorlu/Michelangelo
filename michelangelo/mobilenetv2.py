@@ -20,7 +20,9 @@ class InvertedResidual(tf.keras.models.Model):
         self.use_res_connect = stride == 1 and filterIn == filterOut
 
         if(expansion==1):
-            self.convlist.append(tf.keras.layers.Conv2DTranspose(hidden_dim, 3, (stride, stride), 'same', groups=hidden_dim, use_bias=False))
+            self.convlist.append(tf.keras.layers.UpSampling2D(size=(stride, stride), interpolation='bilinear'))
+            self.convlist.append(tf.keras.layers.DepthwiseConv2D(3, padding='same', use_bias=False))
+            self.convlist.append(tf.keras.layers.Conv2D(hidden_dim, 1, (1, 1), 'same', groups=hidden_dim, use_bias=False))
             self.convlist.append(tf.keras.layers.BatchNormalization())
             self.convlist.append(tf.keras.layers.ReLU(max_value=6))
             self.convlist.append(tf.keras.layers.Conv2D(filterOut, 1, (1, 1), 'valid', use_bias=False))
@@ -29,7 +31,9 @@ class InvertedResidual(tf.keras.models.Model):
             self.convlist.append(tf.keras.layers.Conv2D(hidden_dim, 1, (1, 1), 'valid', use_bias=False))
             self.convlist.append(tf.keras.layers.BatchNormalization())
             self.convlist.append(tf.keras.layers.ReLU(max_value=6))
-            self.convlist.append(tf.keras.layers.Conv2DTranspose(hidden_dim, 3, (stride, stride), 'same', groups=hidden_dim, use_bias=False))
+            self.convlist.append(tf.keras.layers.UpSampling2D(size=(stride, stride), interpolation='bilinear'))
+            self.convlist.append(tf.keras.layers.DepthwiseConv2D(3, padding='same', use_bias=False))
+            self.convlist.append(tf.keras.layers.Conv2D(hidden_dim, 1, (1, 1), 'same', groups=hidden_dim, use_bias=False))
             self.convlist.append(tf.keras.layers.BatchNormalization())
             self.convlist.append(tf.keras.layers.ReLU(max_value=6))
             self.convlist.append(tf.keras.layers.Conv2D(filterOut, 1, (1, 1), 'valid', use_bias=False))
