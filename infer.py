@@ -54,8 +54,8 @@ if(__name__=='__main__'):
                                         keep_checkpoint_every_n_hours=5)
     checkpoint.restore(manager.latest_checkpoint)
 
-    image = cv2.imread('')/255.0
-    image = cv2.resize(image, (512, 512))
+    image = cv2.imread('test.jpg')/255.0
+    image = cv2.resize(image, (512, 512))[np.newaxis, ...]
 
     output = model.test_step(inputs=image)
 
